@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
+
+enum WorkspaceRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum MemberStatus {
+  ACTIVE
+  PENDING
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum EmbeddingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum DocumentType {
+  PDF
+  DOCX
+  TXT
+}
+
+enum MessageSender {
+  USER
+  ASSISTANT
+}
+
+enum ActivityType {
+  UPLOAD
+  PROCESSED
+  SUMMARY
+  QA
+  CONVERSATION
+  INSIGHT
+}
+
+// ----------------------------------------------------
+// MODELS
+// ----------------------------------------------------
+
+model User {
+  id             String             @id @default(uuid())
+  email          String             @unique
+  name           String?
+  passwordHash   String             @map("password_hash")
+  avatarColor    String?            @default("#7185E8") @map("avatar_color")
+  avatarInitials String?            @map("avatar_initials")
+  bio            String?            @db.Text
+  timezone       String?            @default("UTC")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  memberships    WorkspaceMember[]
+  documents      Document[]
+  conversations  Conversation[]
+  activities     DocumentActivity[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id                String             @id @default(uuid())
+  name              String
+  description       String?            @db.Text
+  plan              String             @default("Pro")
+  storageLimitBytes BigInt             @default(2147483648) @map("storage_limit_bytes")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  members           WorkspaceMember[]
+  documents         Document[]
+  conversations     Conversation[]
+  activities        DocumentActivity[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid())
+  workspaceId String        @map("workspace_id")
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String        @map("user_id")
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        WorkspaceRole @default(VIEWER)
+  status      MemberStatus  @default(ACTIVE)
+  joinedAt    DateTime      @default(now()) @map("joined_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+model Document {
+  id           String             @id @default(uuid())
+  workspaceId  String             @map("workspace_id")
+  workspace    Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId       String             @map("user_id")
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  originalName String             @map("original_name")
+  fileType     DocumentType       @map("file_type")
+  fileSize     Int                @map("file_size")
+  fileUrl      String?            @map("file_url")
+  status               DocumentStatus     @default(PENDING)
+  embeddingStatus      EmbeddingStatus    @default(PENDING) @map("embedding_status")
+  embeddedChunksCount  Int                @default(0) @map("embedded_chunks_count")
+  embeddingError       String?            @db.Text @map("embedding_error")
+  pages                Int?               @default(1)
+  chunksCount          Int                @default(0) @map("chunks_count")
+  summary              String?            @db.Text
+  keyTopics            String[]           @default([]) @map("key_topics")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  chunks               DocumentChunk[]
+  conversations        Conversation[]
+  activities           DocumentActivity[]
+
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([status])
+  @@index([embeddingStatus])
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id         String   @id @default(uuid())
+  documentId String   @map("document_id")
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunkIndex Int      @map("chunk_index")
+  pageNumber Int?     @map("page_number")
+  content    String   @db.Text
+  metadata   Json?
+  embedding  Unsupported("vector(768)")?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([documentId])
+  @@map("document_chunks")
+}
+
+model Conversation {
+  id             String             @id @default(uuid())
+  workspaceId    String             @map("workspace_id")
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documentId     String?            @map("document_id")
+  document       Document?          @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  documentIds    String[]           @default([]) @map("document_ids")
+  userId         String             @map("user_id")
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String
+  totalQuestions Int                @default(0) @map("total_questions")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  messages       Message[]
+
+  @@index([workspaceId])
+  @@index([documentId])
+  @@index([userId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String        @id @default(uuid())
+  conversationId String        @map("conversation_id")
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         MessageSender
+  content        String        @db.Text
+  citations      Json?
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model DocumentActivity {
+  id          String        @id @default(uuid())
+  workspaceId String        @map("workspace_id")
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documentId  String?       @map("document_id")
+  document    Document?     @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  userId      String?       @map("user_id")
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action      String
+  target      String
+  type        ActivityType  @default(UPLOAD)
+  metadata    Json?
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  @@index([workspaceId])
+  @@index([documentId])
+  @@index([createdAt])
+  @@map("document_activities")
+}
