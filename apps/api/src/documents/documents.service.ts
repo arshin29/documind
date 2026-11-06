@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   BadRequestException,
   PayloadTooLargeException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import {
   Document,
@@ -268,6 +269,12 @@ export class DocumentsService {
     } catch (error) {
       this.logger.error(`File storage failed: ${(error as Error).message}`);
       throw error;
+    }
+
+    if (!storedFile) {
+      throw new InternalServerErrorException(
+        'Failed to save document file to storage',
+      );
     }
 
     // 4. Create initial Document record with PENDING status

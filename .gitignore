@@ -48,4 +48,6 @@ apps/api/prisma/*.db-journal
 # Uploaded Files & Temporary Storage
 uploads/
 apps/api/uploads/
-storage/
+/storage/
+apps/api/storage/
+!apps/api/src/documents/storage/
