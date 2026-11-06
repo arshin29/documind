@@ -1,5 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import * as pdf from 'pdf-parse';
+import pdf = require('pdf-parse');
 import { ExtractedDocument, ExtractedPage } from './text-extractor.interface';
 
 @Injectable()
